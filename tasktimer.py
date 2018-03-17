@@ -36,7 +36,8 @@ def format_time(seconds):
         format_time(10)         returns     "10.0s"
         format_time(1)          returns     "1.00s"
         format_time(0.01255)    returns     "12.6ms"
-        format_time(1.255e-6)   returns     "1.26us"  rounds correctly
+
+    The finest resolution is 1ns.
 
     """
 
@@ -103,22 +104,59 @@ class Timer(object):
         timer.stop()
 
     If verbose is True, Timer will output statistics after every lap.
-    One can also run
+    Alterantively, one can run
 
         print(timer)
 
     to print statistics, or fetch the variables directly from Timer for manual
     processing. They are:
 
-        timer.last           Last lap time          t_N
-        timer.total          Total elapsed time     sum_i(t_i)
-        timer.mean_squared   Mean squared lap time  sum_i(t_i^2)/N
-        timer.laps           Number of laps         N
+        timer.last          Last lap time          t_N
+        timer.total         Total elapsed time     sum_i(t_i)
+        timer.mean          Mean lap time          sum_i(t_i)/N (= mu_N)
+        timer.sum_sq_diff                          sum_i((t_i-mu_N)^2)
+        timer.laps          Number of laps         N
 
     Timer will not grow slow and big as the number of laps increase, since these
-    variables are computed in a running fashion. The downside, of course, is
-    that only the last lap is available for inspection. One lap typically has an
-    overhead of 2-300 ns (no guarantees).
+    variables are computed in a running fashion using Welford's algorithm. The
+    downside is that only the last lap is available for inspection.
+
+    You can customize the formatting of time durations by providing your own
+    format_time function. This should take the time in seconds (float) and
+    return a string.
+
+    Statistical quantities can be inferred from the member variables. Let's say
+    you execute a program that runs a certain function func() that's being
+    measured:
+
+        timer = Timer()
+        for i in range(N):
+            timer.start()
+            func()
+            timer.stop()
+
+    You can get the *actual* mean, standard deviation and variance from
+    these laps as follows:
+
+        timer.mean
+        timer.stdev()
+        timer.variance()
+
+    This is what's called population statistics. You can also consider these
+    laps to be only a sample of the whole population. For instance func() might
+    be run an infinite amount of times and you just want to run it N times to
+    get an *estimate* of its expected execution time and standard deviation in
+    general, not just for these laps. Then you need to use estimators from the
+    sample. The above three quantities are valid estimators, but the standard
+    deviation and variance would be biased in this case (especially for few
+    laps). Better estimators use Bessel's correction:
+
+        timer.mean
+        timer.sample_stdev()
+        timer.sample_variance()
+
+    The overhead in Timer is reasonably low (typically a few hundred ns per lap)
+    but it's not compiled and no guarantees are given.
     """
 
     def __init__(self, verbose=False, format_time=format_time):
@@ -126,18 +164,19 @@ class Timer(object):
         self.verbose = verbose
 
     def reset(self):
+        "Reset timer."
         self.last         = 0
         self.total        = 0
         self.mean         = 0
-        self.S            = 0
-        self.mean_squared = 0
-        self.sum_squared  = 0
+        self.sum_sq_diff  = 0
         self.laps         = 0
 
     def start(self):
+        "Start timer."
         self._start = t.time()
 
     def stop(self):
+        "Stop timer (or initiate new lap)."
         new_time = t.time()
         elapsed = new_time - self._start
         self._start = new_time
@@ -146,31 +185,28 @@ class Timer(object):
         self.last = elapsed
         self.total += elapsed
 
-        self.mean_squared += (elapsed**2 - self.mean_squared)/self.laps
-        self.sum_squared  += elapsed**2
-
-        delta = elapsed - self.mean
-        self.mean += delta/self.laps
+        delta1 = elapsed - self.mean
+        self.mean += delta1/self.laps
         delta2 = elapsed - self.mean
-        self.S += delta*delta2
+        self.sum_sq_diff += delta1*delta2
 
         if self.verbose: print(self)
 
-    def population_variance(self):
-        self.mean = self.total/self.laps
-        return self.mean_squared-self.mean**2
-
     def variance(self):
-        return self.laps/max((self.laps-1),1) * self.population_variance()
-
-    def population_stdev(self):
-        return np.sqrt(self.population_variance())
+        "Computes population variance or biased estimate from sample"
+        return self.sum_sq_diff/self.laps
 
     def stdev(self):
+        "Computes population standard deviation or biased estimate from sample"
         return np.sqrt(self.variance())
 
-    def mean(self):
-        return self.total/self.laps
+    def sample_variance(self):
+        "Computes unbiased variance estimate from sample"
+        return self.sum_sq_diff/(max(self.laps-1),1)
+
+    def sample_stdev(self):
+        "Computes unbiased standard deviation estimate from sample"
+        return np.sqrt(self.sample_variance())
 
     def __str__(self):
         s = "Last lap: {}, Total: {}, Mean: {}, StDev: {}, Laps: {}".format(
@@ -182,28 +218,58 @@ class Timer(object):
         )
         return s
 
-GLOBALTIMER = Timer()
+GLOBALTIMER = Timer(True)
 
 def tic():
     GLOBALTIMER.start()
 
 def toc():
-    GLOBALTIMER.stop(True)
+    GLOBALTIMER.stop()
 
 class TaskTimer(object):
+
+    def __init__(self, mode='compact', format_time=format_time):
+        assert mode in ['simple','compact','quiet']
+        self.mode = mode
+
+        self.timers = OrderedDict()
+        self.current = None
+
+    def task(self, tag):
+
+        if self.current != None:
+            self.timers[self.current].stop()
+
+        if not tag in self.timers:
+            self.timers[tag] = Timer()
+
+        self.timers[tag].start()
+        self.current = tag
+
+    def iterate(self, iterable, iterations=None):
+
+        if iterations==None:
+            self.laps = len(iterable)
+        else:
+            self.laps = iterations
+
+        for i in iterable:
+            yield i
+
+class TaskTimerOld(object):
     """
     Tracks timing of several tasks in a loop and maintains progress status and
     statistics. Example:
     """
 
-    def __init__(self, mode='compact'):
+    def __init__(self, mode='compact', format_time=format_time):
         assert mode in ['simple','compact','quiet']
         self.mode = mode
 
         self.master = Timer()
         self.timers = OrderedDict()
         self.current = None
-        self.laps = 1
+        self.laps = 0
 
     def task(self, tag):
 
@@ -223,9 +289,12 @@ class TaskTimer(object):
             print("\r",self,end='',sep='')
             sys.stdout.flush()
 
-    def wrap(self, iterable):
+    def iterate(self, iterable, iterations=None):
 
-        self.laps = len(iterable)
+        if iterations==None:
+            self.laps = len(iterable)
+        else:
+            self.laps = iterations
 
         for i in iterable:
             yield i
@@ -274,7 +343,7 @@ class TaskTimer(object):
             if self.master.total != 0:
                 fraction = 100*v.total/self.master.total
             row = [k, format_time(v.mean),
-                      format_time(v.stdev),
+                      format_time(v.stdev()),
                       format_time(v.total),
                       '{:.0f}'.format(fraction)]
             table.append(row)
@@ -309,29 +378,18 @@ class TaskTimer(object):
 
 if __name__ == "__main__":
 
-    timer = Timer(False)
-    for n in range(10000000):
-        timer.start()
-        timer.stop()
-
-    # timer = Timer(False)
-    # for n in range(100):
-    #     timer.start()
-    #     t.sleep(0.1)
-    #     timer.stop()
-
-    print(timer)
-    print(timer.total/timer.laps)
-    # timer = TaskTimer('simple')
+    timer = TaskTimer('simple')
     # timer.task("pre")
 
-    # for n in timer.wrap(["a","b","c","d"]):
+    for n in timer.iterate(["a","b","c","d"]):
 
-    #     timer.task("Task A")
-    #     t.sleep(0.1)
-    #     print(n)
+        timer.task("Task A")
+        t.sleep(0.1)
+        # print(n)
 
-    #     timer.task("Task B")
-    #     t.sleep(0.2)
+        timer.task("Task B")
+        t.sleep(0.2)
 
-    # timer.summary()
+        timer.task("Task A")
+        t.sleep(0.1)
+    timer.summary()
