@@ -1,1 +1,4 @@
+dist
+build
 __pycache__
+TaskTimer.egg-info

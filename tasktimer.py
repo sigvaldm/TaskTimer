@@ -1,8 +1,7 @@
-# BUGS:
+# Wishlist
 #
-# - Header row is sometimes offset
-# - Doesn't work when loop doesn't start on 0 (e.g. after reset)
-# - 'compact' mode breaks when lines are too long
+# - Write "34:77 elapsed" and number of iterations
+# - Allow changing "Step" with some loop name
 #
 
 from __future__ import print_function, division
@@ -11,78 +10,13 @@ if sys.version_info.major == 2:
     from itertools import izip as zip
     range = xrange
 
+from itertools import count
 import time as t
+import math
 import numpy as np
+import shutil
 from collections import OrderedDict
-
-def format_time(seconds):
-    """
-    Formats a string from time given in seconds. For large times (seconds >= 60)
-    the format is:
-
-        dd:hh:mm:ss
-
-    where dd, hh, mm and ss refers to days, hours, minutes and seconds,
-    respectively. If the time is less than one day, the first block (dd:) is
-    omitted, and so forth. Examples:
-
-        format_time(24*60*60)   returns     "1:00:00:00"
-        format_time(60*60)      returns     "1:00:00"
-        format_time(60)         returns     "1:00"
-
-    For small times (seconds < 60), the result is given in 3 significant
-    figures, with units given in seconds and a suitable SI-prefix. Examples:
-
-        format_time(10)         returns     "10.0s"
-        format_time(1)          returns     "1.00s"
-        format_time(0.01255)    returns     "12.6ms"
-
-    The finest resolution is 1ns.
-
-    """
-
-    # Small times
-    if seconds<1:
-        milliseconds = 1000*seconds
-        if milliseconds<1:
-            microseconds = 1000*milliseconds
-            if microseconds<1:
-                nanoseconds = 1000*microseconds
-                return "{:.0f}ns".format(nanoseconds)
-            elif microseconds<10:
-                return "{:.2f}us".format(microseconds)
-            elif microseconds<100:
-                return "{:.1f}us".format(microseconds)
-            else:
-                return "{:.0f}us".format(microseconds)
-        elif milliseconds<10:
-            return "{:.2f}ms".format(milliseconds)
-        elif milliseconds<100:
-            return "{:.1f}ms".format(milliseconds)
-        else:
-            return "{:.0f}ms".format(milliseconds)
-    elif seconds<10:
-            return "{:.2f}s".format(seconds)
-    elif seconds<60:
-            return "{:.1f}s".format(seconds)
-
-    # Large times
-    else:
-        seconds = int(seconds)
-        minutes = int(seconds/60)
-        seconds %= 60
-        if minutes<60:
-            return "{:d}:{:02d}".format(minutes,seconds)
-        else:
-            hours = int(minutes/60)
-            minutes %= 60
-            if hours<24:
-                return "{:d}:{:02d}:{:02d}".format(hours,minutes,seconds)
-            else:
-                days = int(hours/24)
-                hours %= 24
-                return "{:d}:{:02d}:{:02d}:{:02d}".format(
-                    days,hours,minutes,seconds)
+from frmt import *
 
 class Timer(object):
     """
@@ -121,9 +55,22 @@ class Timer(object):
     variables are computed in a running fashion using Welford's algorithm. The
     downside is that only the last lap is available for inspection.
 
-    You can customize the formatting of time durations by providing your own
-    format_time function. This should take the time in seconds (float) and
-    return a string.
+    You can customize the formatting of this output by providing your own Python
+    format string using the 'format_string' argument. This string may contain
+    the following positional arguments:
+
+        0 - Last lap time
+        1 - Total time
+        2 - Mean lap time
+        3 - Standard deviation
+        4 - Number of laps
+
+    For instance format_string="Elapsed time: {1}" may be used to show a simpler
+    output only including the total time. The positional arguments 0-3 are
+    formatted using the format_time function. To format time differently, you
+    can supply your own 'format_time' argument. This must be a function taking
+    the time in number of seconds (float) and returning a string. It should also
+    be able to represent float('nan').
 
     Statistical quantities can be inferred from the member variables. Let's say
     you execute a program that runs a certain function func() that's being
@@ -139,8 +86,8 @@ class Timer(object):
     these laps as follows:
 
         timer.mean
-        timer.stdev()
-        timer.variance()
+        timer.population_stdev()
+        timer.population_variance()
 
     This is what's called population statistics. You can also consider these
     laps to be only a sample of the whole population. For instance func() might
@@ -155,13 +102,38 @@ class Timer(object):
         timer.sample_stdev()
         timer.sample_variance()
 
+    You can also use timer.stdev() or timer.variance() which are either
+    population statistics or sample statistics depending on the argument
+    'statistics'. These are the ones used for the output string.
+
     The overhead in Timer is reasonably low (typically a few hundred ns per lap)
-    but it's not compiled and no guarantees are given.
+    but it's not compiled and no guarantees are given. Printing results takes
+    somewhat longer, naturally.
     """
 
-    def __init__(self, verbose=False, format_time=format_time):
+    def __init__(self,
+                 verbose=False,
+                 format_string=None,
+                 format_time=format_time,
+                 statistics='population'):
+
         self.reset()
         self.verbose = verbose
+        self.format_time = format_time
+        self.format_string = format_string
+        if self.format_string==None:
+            self.format_string = "Last lap: {}, Total: {}, Mean: {}, "\
+                                 "StDev: {}, Laps: {}"
+
+        if statistics == 'population':
+            self.stdev = self.population_stdev
+            self.variance = self.population_variance
+        elif statistics == 'sample':
+            self.stdev = self.sample_stdev
+            self.variance = self.sample_variance
+        else:
+            raise TypeError("statistics must be either 'population' or "\
+                            "'sample'")
 
     def reset(self):
         "Reset timer."
@@ -192,77 +164,100 @@ class Timer(object):
 
         if self.verbose: print(self)
 
-    def variance(self):
-        "Computes population variance or biased estimate from sample"
+    def population_variance(self):
+        "Computes population variance or biased estimate from sample."
         return self.sum_sq_diff/self.laps
 
-    def stdev(self):
-        "Computes population standard deviation or biased estimate from sample"
+    def population_stdev(self):
+        "Computes population standard deviation or biased estimate from sample."
         return np.sqrt(self.variance())
 
     def sample_variance(self):
-        "Computes unbiased variance estimate from sample"
-        return self.sum_sq_diff/(max(self.laps-1),1)
+        "Computes unbiased variance estimate from sample."
+        if self.laps==1:
+            return float('nan')
+        else:
+            return self.sum_sq_diff/(self.laps-1)
 
     def sample_stdev(self):
-        "Computes unbiased standard deviation estimate from sample"
+        "Computes unbiased standard deviation estimate from sample."
         return np.sqrt(self.sample_variance())
 
     def __str__(self):
-        s = "Last lap: {}, Total: {}, Mean: {}, StDev: {}, Laps: {}".format(
-            format_time(self.last),
-            format_time(self.total),
-            format_time(self.mean),
-            format_time(self.stdev()),
+        s = self.format_string.format(
+            self.format_time(self.last),
+            self.format_time(self.total),
+            self.format_time(self.mean),
+            self.format_time(self.stdev()),
             self.laps
         )
         return s
 
-GLOBALTIMER = Timer(True)
-
-def tic():
-    GLOBALTIMER.start()
-
-def toc():
-    GLOBALTIMER.stop()
+# GLOBALTIMER = Timer(True, format_string="Elapsed time: {1}")
+# def tic():
+#     GLOBALTIMER.restart()
+#     GLOBALTIMER.start()
+# def toc():
+#     GLOBALTIMER.stop()
 
 class TaskTimer(object):
-
-    def __init__(self, mode='compact', format_time=format_time):
-        assert mode in ['simple','compact','quiet']
-        self.mode = mode
-
-        self.timers = OrderedDict()
-        self.current = None
-
-    def task(self, tag):
-
-        if self.current != None:
-            self.timers[self.current].stop()
-
-        if not tag in self.timers:
-            self.timers[tag] = Timer()
-
-        self.timers[tag].start()
-        self.current = tag
-
-    def iterate(self, iterable, iterations=None):
-
-        if iterations==None:
-            self.laps = len(iterable)
-        else:
-            self.laps = iterations
-
-        for i in iterable:
-            yield i
-
-class TaskTimerOld(object):
     """
-    Tracks timing of several tasks in a loop and maintains progress status and
-    statistics. Example:
+    This object provides status information and time tracking of several tasks
+    which may be run one or more times, and within a loop or not. This is useful
+    to keep track of the progress in the code, while giving some simple feedback
+    to the user (and possibly developer) about what takes time in the program.
+    In the case of running a loop, progress information including estimated time
+    left is displayed. Example:
+
+        timer = TaskTimer()
+
+        timer.task("Initialization")
+        # Do something
+
+        for n in timer.range(N):
+
+            timer.task("Task A")
+            # Do something
+
+            timer.task("Task B")
+            # Do something
+
+            timer.task("Task A")
+            # Do something
+
+        print(timer)
+
+    There are several modes of displaying the status. In 'compact' mode
+    (default) the progress in a loop is displayed by updating the text on the
+    same line.  This is the neatest, but breaks down if you try to print other
+    data within the loop. Alternatively, there's 'simple' mode which prints the
+    iteration number for each iteration on a separate line, and which therefore
+    doesn't interfere with whatever you may want to print. It does not report
+    the individual tasks within the loop. At last, there's 'quiet' in which
+    nothing is printed but where you still gather statistics.
+
+    You can customize the formatting of the status output displayed during a
+    loop by providing your own 'format_string' argument. This string may contain
+    the following positional arguments:
+
+        0 - Iteration number
+        1 - Total number of iterations
+        2 - Progress in percent (as a float)
+        3 - Estimated time remaining
+        4 - Estimated total time
+
+    For instance format_string="Estimated time remaining: {3}" may be used to
+    show a simpler output only including the estimated time remaining. The
+    positional arguments 3-4 are formatted using the format_time function. To
+    format time differently, you can supply your own 'format_time' argument.
+    This must be a function taking the time in number of seconds (float) and
+    returning a string. It should also be able to represent float('nan').
     """
 
-    def __init__(self, mode='compact', format_time=format_time):
+    def __init__(self,
+                 mode='compact',
+                 format_string=None,
+                 format_time=format_time):
         assert mode in ['simple','compact','quiet']
         self.mode = mode
 
@@ -270,126 +265,204 @@ class TaskTimerOld(object):
         self.timers = OrderedDict()
         self.current = None
         self.laps = 0
+        self.in_progress = False
+        self.format_time = format_time
+        if format_string==None:
+            self.format_string = "Step {}/{} ({:.0f}%). {} of {} remaining. {}"
+        else:
+            self.format_string = format_string
 
     def task(self, tag):
-
-        if self.current == None:
-            self.master.start()
+        """
+        Define that here begins a new task. Each task is defined by a unique
+        text string (tag) and may be repeated as many times as desirable.
+        To mark the end of the previous task while not marking the transition to
+        a new task call task(None).
+        """
 
         if self.current != None:
             self.timers[self.current].stop()
 
-        if not tag in self.timers:
-            self.timers[tag] = Timer()
+        if tag != None:
 
-        self.timers[tag].start()
+            if not tag in self.timers:
+                self.timers[tag] = Timer()
+
+            self.timers[tag].start()
+
         self.current = tag
 
-        if(self.mode=='compact'):
-            print("\r",self,end='',sep='')
-            sys.stdout.flush()
+        if self.mode=='compact':
+            self.status()
 
-    def iterate(self, iterable, iterations=None):
+    def iterate(self, iterable, iterations=None, offset=0):
+        """
+        To get progress information when looping over a generic iterable, it can
+        be wrapped in this function. Example:
+
+            for letter in timer.iterate(["a","b","c","d"])
+                # Do something with letter
+
+        If the iterable does not have a __len__() function then number of
+        iterations must be provided manually thourh the 'iterations' argument.
+
+        It is also possible to offset the iteration count by an amount 'offset'.
+        For instance in the above example the status text would by default
+        progress through steps 0, 1, 2, 3 and finally 4 of 4. But let's say that
+        you have previously already done 4 steps (perhaps you have restarted the
+        program and it is able to continue where it left off). Then you are
+        already half done from the outset, and you're actually starting at step
+        4 of 8 eventhough your iterable only has 4 elements. Then you can set
+        'offset' equal to 4.
+        """
 
         if iterations==None:
             self.laps = len(iterable)
         else:
             self.laps = iterations
 
-        for i in iterable:
-            yield i
-            self.end()
+        self.offset = offset
+        self.in_progress = True
 
-    def range(self, start, stop=None, step=1):
+        self.master.reset()
+        self.master.start()
+        for i in iterable:
+            self.status()
+            yield i
+            self.task(None)
+            self.master.stop()
+
+        self.status(True)
+        self.in_progress = False
+
+    def range(self, start, stop=None):
+        """
+        In places where you would normally loop over range(), you can instead
+        loop over timer.range() to get progress information. The difference
+        between
+
+            for n in timer.range(10,20):
+
+        and
+
+            for n in timer.iterable(range(10,20)):
+
+        is that the former case will show progress information starting to count
+        at 10 and ending in 20, whereas the latter will start at 0 and count to
+        10. I.e. the 'offset' is set to 10 in the former case.
+        """
 
         if stop==None:
             stop = start
             start = 0
 
-        rangeobj = range(start, stop, step)
-        self.laps = len(rangeobj)
+        return self.iterate(range(start,stop), offset=start)
 
-        for i in rangeobj:
-            yield i
-            self.end()
+    def status(self,newline=False):
 
-    def end(self):
+        if self.in_progress:
+            lap = self.master.laps
+            total_time = (self.laps/max(lap,1))*self.master.total
+            eta = total_time-self.master.total
+            progress = 100.0*(lap+self.offset)/(self.laps+self.offset)
+            current = '' if self.current==None else self.current
 
-        if self.current != None:
-            self.timers[self.current].stop()
-            self.master.stop()
-            self.current = None
+            s = self.format_string.format(
+                lap+self.offset,
+                self.laps+self.offset,
+                progress,
+                format_time(eta),
+                format_time(total_time),
+                current
+            )
 
-        if(self.mode=='simple'):
-            print(self)
+            if self.mode=='compact':
+                print("\r",fit_text(s),sep='',end='')
+                if newline: print("")
+            elif self.mode=='simple':
+                print(s)
 
-        if(self.mode=='compact'):
-            print("\r",self,end='',sep='')
             sys.stdout.flush()
-            if(self.master.laps==self.laps): print("\n")
 
-    def summary(self):
+        else:
+            print(self.current)
 
-        row = ['','Mean','StDev','Total','%']
-        table = [row]
+    def summary(self, sortcol=None, sortrev=False):
+        """
+        Formats a summary table of the tasks and their statistics. Example:
+
+            print(timer.summary())
+
+        or equivalently (if no arguments are given to summary()),
+
+            print(timer)
+
+        prints a table such as the following one:
+
+                           #   Mean   StDev  Total    %
+        Initialization     1  2.00s     0ns  2.00s   50
+        Task A             8  101ms  85.7us  805ms   20
+        Task B             4  301ms  85.2us  1.20s   30
+        Total                                4.01s  100
+
+        This table shows the number of executions of each task, the mean
+        execution time, the standard deviation of the execution time, the total
+        execution time, and the percentage of the total time usage of each task.
+
+        If 'sortcol' equals a number the table will be sorted according to the
+        column with that number (starting at zero). E.g. to sort by total
+        execution time, 'sortcol' would be 4. To reverse the sorting order,
+        'sortrev' should be True.
+        """
 
         K = list(self.timers.keys())
         V = list(self.timers.values())
-        K.append('Total')
-        V.append(self.master)
 
+        table = []
+
+        total_time = sum([v.total for v in V])
         for k,v in zip(K,V):
-            fraction = 100
-            if self.master.total != 0:
-                fraction = 100*v.total/self.master.total
-            row = [k, format_time(v.mean),
-                      format_time(v.stdev()),
-                      format_time(v.total),
-                      '{:.0f}'.format(fraction)]
+            fraction = 100*v.total/total_time
+            row = [k, v.laps, v.mean, v.stdev(), v.total, fraction]
             table.append(row)
 
-        self.table = table
+        if sortcol!=None:
+            table.sort(key=lambda x: x[sortcol], reverse=sortrev)
 
-        colwidth = np.max(np.array([[len(a) for a in b] for b in table]),0)
-        colwidth[1:] += 2 # column spacing
+        for i in range(len(table)):
+            table[i][1] = "{:d}".format(table[i][1])
+            table[i][2] = self.format_time(table[i][2])
+            table[i][3] = self.format_time(table[i][3])
+            table[i][4] = self.format_time(table[i][4])
+            table[i][5] = "{:.0f}".format(table[i][5])
 
-        s = ''
-        for row in table:
-            s += '{:<{w}}'.format(row[0],w=colwidth[0])
-            for col,w in zip(row[1:],colwidth[1:]):
-                s += '{:>{w}}'.format(col,w=w)
-            s += "\n"
+        header = ['', '#', 'Mean', 'StDev', 'Total', '%']
+        footer = ['Total', '', '', '', self.format_time(total_time), '100']
+        table.insert(0, header)
+        table.append(footer)
 
-        print(s)
+        return format_table(table, '<>')
 
     def __str__(self):
-
-        lap = self.master.laps
-        total_time = (self.laps/max(lap,1))*self.master.total
-        eta = total_time-self.master.total
-        progress = 100.0*lap/self.laps
-        width = max(len(a) for a in self.timers.keys())
-        current = '' if self.current==None else self.current
-
-        s  = "Completed step %i/%i (%.0f%%). "%(lap,self.laps,progress)
-        s += "ETA: {} (total: {}). ".format(format_time(eta),format_time(total_time))
-        s += "{:<{w}}".format(current,w=width)
-        return s
+        return self.summary()
 
 if __name__ == "__main__":
 
-    timer = TaskTimer('simple')
-    # timer.task("pre")
+    timer = TaskTimer('compact')
+
+    timer.task("Initialization")
+    t.sleep(2)
 
     for n in timer.iterate(["a","b","c","d"]):
 
         timer.task("Task A")
         t.sleep(0.1)
-        # print(n)
 
-        timer.task("Task B")
-        t.sleep(0.2)
+        timer.task("Task B"+20* " asdf")
+        t.sleep(0.3)
 
         timer.task("Task A")
         t.sleep(0.1)
-    timer.summary()
+
+    print(timer.summary(sortcol=4,sortrev=True))
+    print(timer)
