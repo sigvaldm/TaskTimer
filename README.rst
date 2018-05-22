@@ -1,31 +1,35 @@
 TaskTimer
 =========
 
-Indicate progress during runtime and output a summary of what's time consuming afterwards. Not quite a progress bar, not quite a profiler, this little tool is very handy.
+Indicates progress during runtime, while keeping track of time consumed by user-defined tasks.
 
-Consider this simple program::
+Consider this simple dummy program::
+
+    from tasktimer import TaskTimer
+    from time import sleep
 
     timer = TaskTimer()
-
-    timer.task('Assembling stiffness matrix (A)')
-    time.sleep(5) # Dummy
 
     for n in timer.range(40):
 
         timer.task('Assembling load vector (b)')
-        time.sleep(1) # Dummy
+        sleep(0.1) # Dummy
 
         timer.task('Solving linear system Au=b')
-        time.sleep(5) # Dummy
-
-Which task is currently running will be printed to terminal, for instance, the output from the above code may look like this::
-
-    Assembling stiffness matrix (A)
-    Step 3/40 (8%). 3:42 of 4:00 remaining. Solving linear system Au=b
-
-The last line indicating the loop will (by default) update dynamically. When all tasks are completed, one can print statistics simply as::
+        sleep(0.5) # Dummy
 
     print(timer)
+    
+The `task()` method is used to indicate that from now on the program is working on another task. `TaskTimer` will indicate progress, and display the current task, for instance::
+
+    Step 11/40 (28%). 17.5s of 24.1s remaining. Assembling load vector (b)
+
+When all tasks are completed, `print(timer)` will print a summary of the time consumption of the various tasks::
+
+                                 #   Mean   StDev  Total    %
+    Assembling load vector (b)  40  101ms  89.2us  4.02s   17
+    Solving linear system Au=b  40  501ms   140us  20.0s   83
+    Total                                          24.1s  100
 
 to get::
 

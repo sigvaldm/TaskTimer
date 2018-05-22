@@ -25,7 +25,7 @@ with open('README.rst', encoding='utf-8') as f:
 
 setup(name='TaskTimer',
       version='1.0.0',
-      description='Lightweight formatting of tables and times in Python',
+      description='Indicates progress during runtime, while keeping track of time consumed by user-defined tasks.',
       long_description=long_description,
       author='Sigvald Marholm',
       author_email='marholm@marebakken.com',
