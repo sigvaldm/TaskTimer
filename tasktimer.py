@@ -345,7 +345,7 @@ class TaskTimer(object):
 
         and
 
-            for n in timer.iterable(range(10,20)):
+            for n in timer.iterate(range(10,20)):
 
         is that the former case will show progress information starting to count
         at 10 and ending in 20, whereas the latter will start at 0 and count to
