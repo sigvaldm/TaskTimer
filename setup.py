@@ -31,6 +31,7 @@ setup(name='TaskTimer',
       author_email='marholm@marebakken.com',
       url='https://github.com/sigvaldm/TaskTimer.git',
       py_modules=['TaskTimer'],
+      install_requires=['frmt >1,<2*dev*'],
       license='LGPL'
      )
 
