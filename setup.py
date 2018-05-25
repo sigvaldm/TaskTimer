@@ -23,14 +23,14 @@ from setuptools import setup
 with open('README.rst', encoding='utf-8') as f:
     long_description = f.read()
 
-setup(name='TaskTimer',
-      version='1.0.0',
+setup(name='tasktimer',
+      version='1.0.1',
       description='Indicates progress during runtime, while keeping track of time consumed by user-defined tasks.',
       long_description=long_description,
       author='Sigvald Marholm',
       author_email='marholm@marebakken.com',
-      url='https://github.com/sigvaldm/TaskTimer.git',
-      py_modules=['TaskTimer'],
+      url='https://github.com/sigvaldm/tasktimer.git',
+      py_modules=['tasktimer'],
       install_requires=['frmt >1,<2*dev*'],
       license='LGPL'
      )
