@@ -377,7 +377,7 @@ class TaskTimer(object):
             )
 
             if self.mode=='compact':
-                print("\r",fit_text(s),sep='',end='')
+                print("\r", format_fit(s), sep='', end='')
                 if newline: print("")
             elif self.mode=='simple':
                 print(s)
