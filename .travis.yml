@@ -1,0 +1,21 @@
+language: python
+python:
+- 2.7
+- 3.5
+- 3.6
+- 3.7-dev
+before_install:
+- pip install pytest pytest-cov
+- pip install coveralls
+script:
+- pytest
+after_success:
+- coveralls
+deploy:
+  provider: pypi
+  user: sigvaldm
+  on:
+    tags: true
+    python: 3.7-dev
+  password:
+    secure: Tbt2S4TN65/t9lr/PTiDbl7trMZR9PciNv8cgDZY40L9ugcpbZh6+s3RnwcFa3JFExyLqeZw/AYqkyZGgtr6T17njUVwGAqheq7y283lCfP+zRmXyQd0RfSbvYFSbx5mbCVQGR5yWnhyF+6t4NZS068rp7pLJRPZsQ60Fnhfra3nrFNUoc7L0vloQzrK+E6cgL3Fdv45znd2eQoC/QrB7gYfvU7K1/kTFerPgDLNgi2Bl8Z1pQOaQt6t87oiikkk1T/8mPViFz+LqyMIByrWdqAHoT9Na6E+Ix0rjPWcEXWKtIJO/2giHdlia50CzNG857X/Wg8Feuqb3br+EUW9tLkIp5tB2FNu7v5IyaMA1hnhF2HPv6s+8NmHYzCgXvPDVFN/diKFCbxrYaFR5KfaPE+pe2cVT4xMIIDQYFvfpG+THtGS3e5/cI5F6kUNpVfb1g3SGtfI3oL4Pv2q4Wx3K5Y8nkvhmGFPO+IQUzxbNGxYb4HfNhksUrg8x5M9B0ucCE0nngc55+iKU4XeVQDFTztYtqkBE7nURg/pjSN92cNJR0yvL83IrXTEpFVb2c8Fg3ZWIJlsctr+PNt3Z5wIue/vcq7PXEpf6NsnQI5nccgkOJdJD7O5HJg0YU7uERVXcg62X7523mEBZatNO/yx05rrn4nv4CBHw3/Ua0xXvsw=

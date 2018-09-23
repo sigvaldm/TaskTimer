@@ -3,7 +3,7 @@ from time import sleep
 
 timer = TaskTimer()
 
-for n in timer.range(40):
+for n in timer.range(4):
 
     timer.task('Assembling load vector (b)')
     sleep(0.1) # Dummy
