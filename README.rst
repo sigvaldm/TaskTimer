@@ -1,6 +1,15 @@
 TaskTimer
 =========
 
+.. image:: https://travis-ci.com/sigvaldm/TaskTimer.svg?branch=master
+    :target: https://travis-ci.com/sigvaldm/TaskTimer
+
+.. image:: https://coveralls.io/repos/github/sigvaldm/TaskTimer/badge.svg?branch=master
+    :target: https://coveralls.io/github/sigvaldm/TaskTimer?branch=master
+
+.. image:: https://img.shields.io/pypi/pyversions/TaskTimer.svg
+    :target: https://pypi.org/project/TaskTimer
+
 Indicates progress during runtime, while keeping track of time consumed by user-defined tasks. Not quite a progress bar, not quite a profiler, but something in between which I personally have found to be very handy, especially when working with computationally intensive programs.
 
 Consider this simple dummy program::
