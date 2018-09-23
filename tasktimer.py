@@ -13,7 +13,6 @@ if sys.version_info.major == 2:
 from itertools import count
 import time as t
 import math
-import numpy as np
 import shutil
 from collections import OrderedDict
 from frmt import *
@@ -170,7 +169,7 @@ class Timer(object):
 
     def population_stdev(self):
         "Computes population standard deviation or biased estimate from sample."
-        return np.sqrt(self.variance())
+        return math.sqrt(self.variance())
 
     def sample_variance(self):
         "Computes unbiased variance estimate from sample."
@@ -181,7 +180,7 @@ class Timer(object):
 
     def sample_stdev(self):
         "Computes unbiased standard deviation estimate from sample."
-        return np.sqrt(self.sample_variance())
+        return math.sqrt(self.sample_variance())
 
     def __str__(self):
         s = self.format_string.format(
