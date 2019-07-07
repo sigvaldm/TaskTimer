@@ -11,7 +11,7 @@ if sys.version_info.major == 2:
     range = xrange
 
 from itertools import count
-import time as t
+import time
 import math
 import shutil
 from collections import OrderedDict
@@ -114,12 +114,14 @@ class Timer(object):
                  verbose=False,
                  format_string=None,
                  format_time=format_time,
-                 statistics='population'):
+                 statistics='population',
+                 time_function=time.time):
 
         self.reset()
         self.verbose = verbose
         self.format_time = format_time
         self.format_string = format_string
+        self.time_function = time_function
         if self.format_string==None:
             self.format_string = "Last lap: {}, Total: {}, Mean: {}, "\
                                  "StDev: {}, Laps: {}"
@@ -144,11 +146,11 @@ class Timer(object):
 
     def start(self):
         "Start timer."
-        self._start = t.time()
+        self._start = self.time_function()
 
     def stop(self):
         "Stop timer (or initiate new lap)."
-        new_time = t.time()
+        new_time = self.time_function()
         elapsed = new_time - self._start
         self._start = new_time
 
@@ -165,7 +167,10 @@ class Timer(object):
 
     def population_variance(self):
         "Computes population variance or biased estimate from sample."
-        return self.sum_sq_diff/self.laps
+        if self.laps==0:
+            return float('nan')
+        else:
+            return self.sum_sq_diff/self.laps
 
     def population_stdev(self):
         "Computes population standard deviation or biased estimate from sample."
@@ -173,7 +178,7 @@ class Timer(object):
 
     def sample_variance(self):
         "Computes unbiased variance estimate from sample."
-        if self.laps==1:
+        if self.laps<=1:
             return float('nan')
         else:
             return self.sum_sq_diff/(self.laps-1)
@@ -450,18 +455,18 @@ if __name__ == "__main__":
     timer = TaskTimer('compact')
 
     timer.task("Initialization")
-    t.sleep(2)
+    time.sleep(2)
 
     for n in timer.iterate(["a","b","c","d"]):
 
         timer.task("Task A")
-        t.sleep(0.1)
+        time.sleep(0.1)
 
         timer.task("Task B"+20* " asdf")
-        t.sleep(0.3)
+        time.sleep(0.3)
 
         timer.task("Task A")
-        t.sleep(0.1)
+        time.sleep(0.1)
 
     print(timer.summary(sortcol=4,sortrev=True))
     print(timer)
