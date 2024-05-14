@@ -35,13 +35,18 @@ setup(name='tasktimer',
       author_email='marholm@marebakken.com',
       url='https://github.com/sigvaldm/tasktimer.git',
       py_modules=['tasktimer'],
-      install_requires=['frmt >=2,<3*dev*'],
+      install_requires=['frmt >=2,<3'],
       license='LGPL',
       classifiers=[
         'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7'
+        'Programming Language :: Python :: 3.8'
+        'Programming Language :: Python :: 3.9'
+        'Programming Language :: Python :: 3.10'
+        'Programming Language :: Python :: 3.11'
+        'Programming Language :: Python :: 3.12'
         ]
      )
 
